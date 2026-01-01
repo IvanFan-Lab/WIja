@@ -103,6 +103,7 @@ function calculateDagreLayout(persons: Person[]): Map<string, NodePosition> {
     });
 
     // Post-process: Position spouses next to each other on same Y level
+    // Male on the left, Female on the right
     const processedSpouses = new Set<string>();
     persons.forEach(person => {
         if (person.relationships.spouseIds.length === 0) return;
@@ -114,15 +115,34 @@ function calculateDagreLayout(persons: Person[]): Map<string, NodePosition> {
         person.relationships.spouseIds.forEach(spouseId => {
             if (processedSpouses.has(spouseId)) return;
 
+            const spouse = persons.find(p => p.personId === spouseId);
+            if (!spouse) return;
+
             const spousePos = posMap.get(spouseId);
             if (!spousePos) return;
 
-            // Move spouse to same Y and next to person
             const gap = 20;
-            posMap.set(spouseId, {
-                x: personPos.x + NODE_WIDTH + gap,
-                y: personPos.y
-            });
+
+            // Determine which person should be on the left (male) and right (female)
+            // If person is female and spouse is male, swap positions
+            if (person.gender === 'female' && spouse.gender === 'male') {
+                // Male (spouse) should be on the left, Female (person) on the right
+                const leftX = Math.min(personPos.x, spousePos.x);
+                posMap.set(spouseId, {
+                    x: leftX,
+                    y: personPos.y
+                });
+                posMap.set(person.personId, {
+                    x: leftX + NODE_WIDTH + gap,
+                    y: personPos.y
+                });
+            } else {
+                // Default: person on left, spouse on right (works for male-female, same gender, or unknown)
+                posMap.set(spouseId, {
+                    x: personPos.x + NODE_WIDTH + gap,
+                    y: personPos.y
+                });
+            }
 
             processedSpouses.add(spouseId);
         });
@@ -130,7 +150,7 @@ function calculateDagreLayout(persons: Person[]): Map<string, NodePosition> {
         processedSpouses.add(person.personId);
     });
 
-    // Post-process: Center children under their parents
+    // Post-process: Center children under their parents, sorted by birth date (oldest first on left)
     persons.forEach(person => {
         if (person.relationships.childIds.length === 0) return;
 
@@ -146,21 +166,51 @@ function calculateDagreLayout(persons: Person[]): Map<string, NodePosition> {
             }
         }
 
-        // Get children and their positions
-        const children = person.relationships.childIds
-            .map(id => ({ id, pos: posMap.get(id) }))
+        // Get children with their Person data for birth date sorting
+        const childrenWithData = person.relationships.childIds
+            .map(id => {
+                const childPerson = persons.find(p => p.personId === id);
+                return {
+                    id,
+                    pos: posMap.get(id),
+                    birthDate: childPerson?.birthDate
+                };
+            })
             .filter(c => c.pos !== undefined);
 
-        if (children.length === 0) return;
+        if (childrenWithData.length === 0) return;
 
-        // Calculate current children center
-        const childrenMinX = Math.min(...children.map(c => c.pos!.x));
-        const childrenMaxX = Math.max(...children.map(c => c.pos!.x + NODE_WIDTH));
+        // Sort children by birth date (oldest first = earliest date = left side)
+        // Children without birthDate go to the end
+        childrenWithData.sort((a, b) => {
+            if (!a.birthDate && !b.birthDate) return 0;
+            if (!a.birthDate) return 1; // No date goes to end
+            if (!b.birthDate) return -1;
+            return a.birthDate.localeCompare(b.birthDate); // Earlier dates first
+        });
+
+        // Re-arrange children positions based on sorted order
+        // Get the leftmost X position and spacing from current layout
+        const sortedXPositions = childrenWithData
+            .map(c => c.pos!.x)
+            .sort((a, b) => a - b);
+
+        // Assign positions based on sorted order (oldest to youngest, left to right)
+        childrenWithData.forEach((child, index) => {
+            const pos = posMap.get(child.id);
+            if (pos) {
+                posMap.set(child.id, { x: sortedXPositions[index], y: pos.y });
+            }
+        });
+
+        // Calculate new children center after reordering
+        const childrenMinX = Math.min(...childrenWithData.map(c => posMap.get(c.id)!.x));
+        const childrenMaxX = Math.max(...childrenWithData.map(c => posMap.get(c.id)!.x + NODE_WIDTH));
         const childrenCenter = (childrenMinX + childrenMaxX) / 2;
 
         // Shift children to center under parents
         const shift = coupleCenter - childrenCenter;
-        children.forEach(child => {
+        childrenWithData.forEach(child => {
             const pos = posMap.get(child.id);
             if (pos) {
                 posMap.set(child.id, { x: pos.x + shift, y: pos.y });
