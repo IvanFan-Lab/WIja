@@ -331,6 +331,37 @@ function calculateDagreLayout(persons: Person[]): Map<string, NodePosition> {
         });
     });
 
+    // POST-PROCESS: Ensure ALL children are ALWAYS below their parents
+    // This fixes any cases where dagre might have placed a child above a parent
+    const MIN_CHILD_Y_OFFSET = NODE_HEIGHT + 60; // Minimum vertical gap between parent and child
+
+    persons.forEach(person => {
+        if (person.relationships.childIds.length === 0) return;
+
+        const parentPos = posMap.get(person.personId);
+        if (!parentPos) return;
+
+        // Get the lowest Y position among all parents of the children
+        // (considering both parent and spouse if exists)
+        let lowestParentY = parentPos.y;
+        person.relationships.spouseIds.forEach(spouseId => {
+            const spousePos = posMap.get(spouseId);
+            if (spousePos) {
+                lowestParentY = Math.max(lowestParentY, spousePos.y);
+            }
+        });
+
+        const minChildY = lowestParentY + MIN_CHILD_Y_OFFSET;
+
+        // For each child, ensure they are below the parent
+        person.relationships.childIds.forEach(childId => {
+            const childPos = posMap.get(childId);
+            if (childPos && childPos.y < minChildY) {
+                posMap.set(childId, { x: childPos.x, y: minChildY });
+            }
+        });
+    });
+
     // FINAL: Normalize positions so minimum X and Y are at least 50px from edge
     // This ensures no nodes are positioned outside the visible canvas
     let minX = Infinity, minY = Infinity;
