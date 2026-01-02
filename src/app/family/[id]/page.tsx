@@ -349,9 +349,9 @@ export default function FamilyPage() {
                     />
                 </div>
 
-                {/* Sidebar - Selected Person */}
+                {/* Sidebar - Selected Person (FIXED POSITION - always visible) */}
                 {selectedPerson && (
-                    <div className={`${isEditingSidebar ? 'w-96' : 'w-80'} bg-white border-l border-stone-200 shadow-lg overflow-y-auto animate-slide-in-right transition-all`}>
+                    <div className={`fixed right-0 top-[72px] bottom-0 ${isEditingSidebar ? 'w-96' : 'w-80'} bg-white border-l border-stone-200 shadow-2xl overflow-y-auto z-50 animate-slide-in-right transition-all`}>
                         <div className="p-4">
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="font-semibold text-stone-800">
